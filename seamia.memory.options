@@ -22,6 +22,53 @@
 			"6": "label"
 		}
 	},
+	
+	"properties": {
+		"default": {
+			"bgcolor": "#a6cee3",
+			"align":  "right"
+		},
+		"header": {
+			"bgcolor": "cornsilk",
+			"align":  "right"
+		},
+		"footer": {
+			"bgcolor": "#cecece",
+			"align":  "left"
+		},
+		"key": {
+			"bgcolor": "#a6cee3",
+			"align":  "right"
+		},
+		"value": {
+			"bgcolor": "#e3a6ce",
+			"align":  "left"
+		},
+		"blank": {
+			"bgcolor": "#ffffff",
+			"align":  "right"
+		},
+		"info": {
+			"bgcolor": "#cccccc",
+			"align":  "left"
+		},
+		"type": {
+			"bgcolor": "bisque",
+			"align":  "right"
+		},
+		"frame": {
+			"bgcolor":    "#fffaf0",
+			"border":      "1",
+			"cellborder":  "0",
+			"cellspacing": "0"
+		},
+		"resolver.external": {
+			"bgcolor": "burlywood"
+		},
+		"resolver.internal": {
+			"bgcolor": "darkseagreen"
+		}
+	},
 
 	"colors": "ast.colors",
 	"link.pointer": "[color=\"orange1\"]",

@@ -36,7 +36,8 @@ type (
 		style   connectionStyle
 	}
 
-	CustomResolver func(value reflect.Value) (string, bool)
+	CustomResolver    = func(value reflect.Value) (string, bool)
+	CustomInformation = func() map[string]string
 )
 
 const (
@@ -59,7 +60,9 @@ type mapper struct {
 
 	nodes       []*cnode
 	connections []connection
-	comment     string
+	properties  info
+
+	comment string
 
 	knownEntries map[uintptr]reflect.Value
 	currentRoot  reflect.Value
@@ -110,6 +113,7 @@ func (c *Config) Map(w io.Writer, is ...interface{}) {
 		2,
 		nil,
 		nil,
+		info{},
 		comment,
 		map[uintptr]reflect.Value{},
 		reflect.Value{},
@@ -121,10 +125,21 @@ func (c *Config) Map(w io.Writer, is ...interface{}) {
 		// fmt.Printf("type of %v: %T\n", index, i)
 		_ = index
 
-		if _, ok := i.(string); ok {
+		if txt, ok := i.(string); ok {
 			// this is a comment - ignore it
+			if len(m.comment) == 0 {
+				m.comment = txt
+			}
 		} else if reolver, ok := i.(CustomResolver); ok {
 			m.add(reolver)
+		} else if inform, ok := i.(CustomInformation); ok {
+			for key, value := range inform() {
+				m.addInfo(key, value)
+			}
+		} else if inform, ok := i.(func() map[string]string); ok {
+			for key, value := range inform() {
+				m.addInfo(key, value)
+			}
 		} else {
 			iVal := reflect.ValueOf(i)
 			if !iVal.CanAddr() {
@@ -342,6 +357,10 @@ func (m *mapper) isNil(what string) bool {
 	return false
 }
 
+func (m *mapper) addInfo(key string, format string, args ...interface{}) {
+	m.properties.add(key, format, args...)
+}
+
 func (conn *connection) write(w io.Writer) {
 	out := func(format string, arg ...interface{}) {
 		fmt.Fprintf(w, format, arg...)
@@ -358,21 +377,35 @@ func (conn *connection) write(w io.Writer) {
 		toPort += ":" + to
 	}
 
-	switch conn.style {
-	case connDefault:
-		add("color=\"%s\"", "black")
-		port("w")
-	case connPointer:
-		add("color=\"%s\"", "red")
-		port("w") // "n"
-	case connArray:
-		add("color=\"%s\"", "blue")
-	case connInner:
-		add("color=\"%s\"", "green")
-		add("weight=3")
-		add("penwidth=3")
-		port("w")
+	for prop, value := range connectorProperties[conn.style] {
+		switch prop {
+		case "port":
+			port(value)
+		case "color":
+			add("%s=\"%s\"", prop, value)
+		default:
+			add("%s=%s", prop, value)
+		}
 	}
+
+	/*
+		switch conn.style {
+		case connDefault:
+			add("color=\"%s\"", "black")
+			port("w")
+		case connPointer:
+			add("color=\"%s\"", "red")
+			port("w") // "n"
+		case connArray:
+			add("color=\"%s\"", "blue")
+		case connInner:
+			add("color=\"%s\"", "green")
+			add("weight=3")
+			add("penwidth=3")
+			port("w")
+		}
+	*/
+
 	// style = Options().LinkPointer
 	// Options().LinkArray
 
@@ -380,6 +413,10 @@ func (conn *connection) write(w io.Writer) {
 		if tooltip := strings.Trim(conn.tooltip, " \t\"\r\n"); len(tooltip) > 0 {
 			add("tooltip=\"%s\"", tooltip)
 		}
+	}
+
+	if optionAllowMetadata {
+		add("id=\"%s;%s;\"", conn.fromNode.getName(), conn.toNode.getName())
 	}
 
 	style := ""

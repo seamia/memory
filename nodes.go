@@ -5,8 +5,13 @@ package memory
 import (
 	"fmt"
 	"io"
+	"os"
+	"os/user"
 	"reflect"
+	"runtime"
+	"sort"
 	"strings"
+	"time"
 )
 
 type cell struct {
@@ -136,8 +141,13 @@ func (s *cnode) write(w io.Writer) {
 		fmt.Fprintf(w, format, arg...)
 	}
 
-	// 		Node_Ja_128	[shape=plaintext tooltip="*" label=<*>];
-	out("\t%v	[shape=plaintext tooltip=\"%s\" label=<", s.id.getName(), s.tooltip)
+	// 		Node_128	[shape=plaintext tooltip="*" label=<*>];
+	idPart := ""
+	if optionAllowMetadata {
+		idPart = fmt.Sprintf("id=\"%s\" ", s.id.getName())
+	}
+
+	out("\t%v	[shape=plaintext tooltip=\"%s\" %slabel=<", s.id.getName(), s.tooltip, idPart)
 
 	table := getProperties(Frame)
 	out("<TABLE BORDER=\"%s\" CELLBORDER=\"%s\" CELLSPACING=\"%s\" BGCOLOR=\"%s\">",
@@ -180,8 +190,46 @@ func (m *mapper) addNode(node *cnode) {
 
 func (m *mapper) write(w io.Writer) {
 	m.optimize()
+	m.collectInfo()
 	// Mrecord(w, m.nodes, m.connections, m.comment)
-	mTable(w, m.nodes, m.connections, m.comment)
+	mTable(w, m.nodes, m.connections, m.properties, m.comment)
+}
+
+func (m *mapper) collectInfo() {
+	now := time.Now()
+	m.addInfo("date", now.Format(time.RFC3339))
+	m.addInfo("PID", "%v", os.Getpid())
+
+	// app name
+	app := os.Args[0]
+	if runtime.GOOS == "windows" {
+		app = strings.ReplaceAll(app, "\\", "/")
+	}
+	parts := strings.Split(app, "/")
+	app = parts[len(parts)-1]
+	m.addInfo("app", "%v", app)
+
+	m.addInfo("os/arch", "%v / %v", runtime.GOOS, runtime.GOARCH)
+	m.addInfo("cpus/goroutines", "%v / %v", runtime.NumCPU(), runtime.NumGoroutine())
+	m.addInfo("version", "%s", runtime.Version())
+
+	if len(m.comment) > 0 {
+		m.addInfo("comment", m.comment)
+	}
+
+	if host, err := os.Hostname(); err == nil {
+		m.addInfo("hostname", host)
+	}
+
+	if wd, err := os.Getwd(); err == nil {
+		m.addInfo("wd", wd)
+	}
+
+	if currentUser, err := user.Current(); err == nil {
+		m.addInfo("user", "%s (%s)", currentUser.Name, currentUser.Username)
+		m.addInfo("uid", "%s", currentUser.Uid)
+		m.addInfo("gid", "%s", currentUser.Gid)
+	}
 }
 
 func (m *mapper) isRoot(what reflect.Value) bool {
@@ -277,4 +325,72 @@ func (m *mapper) optimize() {
 
 func (node nodeID) getName() string {
 	return fmt.Sprintf("Node_Ja_%v", node)
+}
+
+type info struct {
+	data m2s
+}
+
+func (s *info) add(key string, format string, args ...interface{}) {
+	if s.data == nil {
+		s.data = make(m2s)
+	}
+
+	s.data[key] = fmt.Sprintf(format, args...)
+}
+
+func (s *info) write(w io.Writer) {
+
+	if len(s.data) == 0 {
+		return
+	}
+
+	out := func(format string, arg ...interface{}) {
+		fmt.Fprintf(w, format, arg...)
+	}
+
+	/*
+
+		shape=plaintext
+		tooltip=""
+		fontname="Cascadia Code"
+		fontsize=7
+		fillcolor=transparent
+
+	*/
+
+	// 		Node_128	[shape=plaintext tooltip="*" label=<*>];
+	table := getProperties(InfoFrame)
+	out("\t%v	[shape=plaintext fontsize=\"%s\" fillcolor=\"%s\" tooltip=\"%s\" label=<",
+		"Info", table["fontsize"], table[background], "")
+
+	out("<TABLE BORDER=\"%s\" CELLBORDER=\"%s\" CELLSPACING=\"%s\" BGCOLOR=\"%s\">",
+		table["border"], table["cellborder"], table["cellspacing"], table["bgcolor"])
+
+	header := getProperties(InfoHeader)
+	// header = customize(header, s.tooltip)
+	out("<TR><TD COLSPAN=\"%v\" PORT=\"%s\" BGCOLOR=\"%s\" ALIGN=\"%s\">%s</TD></TR>",
+		2, portTitle,
+		header["bgcolor"], header["align"],
+		formattedText(Header, "Information"))
+
+	keys := make([]string, 0, len(s.data))
+	for key := range s.data {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return strings.Compare(strings.ToLower(keys[i]), strings.ToLower(keys[j])) == -1
+	})
+
+	for _, key := range keys {
+		value := s.data[key]
+
+		out("<TR>")
+		render(out, InfoKey, key, "")
+		render(out, InfoValue, value, "")
+		out("</TR>")
+	}
+	out("</TABLE>")
+
+	out(">];\n")
 }

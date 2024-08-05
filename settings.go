@@ -5,7 +5,7 @@ package memory
 import (
 	"encoding/json"
 	"io/fs"
-	"io/ioutil"
+	"os"
 	"os/user"
 	"path"
 	"sync"
@@ -17,6 +17,7 @@ const (
 
 	optionAllowExternalResolver = true
 	optionAllowStringResolver   = true
+	optionAllowMetadata         = true
 )
 
 type Settings struct {
@@ -27,6 +28,7 @@ type Settings struct {
 	Substitute               map[string]map[string]string `json:"substitute"`
 	Colors                   interface{}                  `json:"colors"`
 	SuppresHeader            bool                         `json:"suppresHeader"`
+	SuppresInfo              bool                         `json:"suppresInfo"`
 	CollapsePointerNodes     bool                         `json:"collapsePointerNodes"`
 	CollapseSingleSliceNodes bool                         `json:"collapseSingleSliceNodes"`
 	ColorBackground          string                       `json:"colorBackground"` // transparent
@@ -35,6 +37,9 @@ type Settings struct {
 	FontSize                 string                       `json:"fontSize"`
 	LinkPointer              string                       `json:"link.pointer"`
 	LinkArray                string                       `json:"link.array"`
+	PropsData                interface{}                  `json:"properties"`
+	Props                    map[string]map[string]string `json:"-"`
+	Connectors               map[string]map[string]string `json:"connectors"`
 
 	LoadedFrom string `json:"-"`
 }
@@ -53,7 +58,7 @@ var (
 	}
 
 	guard          sync.Mutex
-	colors         = make(map[string]string)
+	customColors   = make(map[string]string)
 	settingsLoaded bool
 )
 
@@ -65,11 +70,13 @@ func Options() *Settings {
 		if !settingsLoaded {
 			settingsLoaded = true
 
+			trace("loading settings")
 			loadedFrom := "./" + optionsFileName
-			data, err := ioutil.ReadFile(loadedFrom)
+			data, err := os.ReadFile(loadedFrom)
 			if err != nil {
+				warning("failed to open file (%s): %v", loadedFrom, err)
 				loadedFrom = homeDir(optionsFileName)
-				data, err = ioutil.ReadFile(loadedFrom)
+				data, err = os.ReadFile(loadedFrom)
 			}
 
 			if err == nil {
@@ -86,9 +93,13 @@ func Options() *Settings {
 				}
 			}
 
-			if settings.Colors != nil {
-				loadColors()
-			}
+			settings.ColorBackground = correctColor(settings.ColorBackground)
+			settings.ColorDefault = correctColor(settings.ColorDefault)
+
+			loadColors()
+
+			applyProperties(loadProps())
+			applyConnectors(settings.Connectors)
 		}
 	}
 	return &settings
@@ -105,6 +116,7 @@ func loadColors() {
 	if input == nil {
 		return
 	}
+	trace("loading custom colors")
 
 	var list []string
 	switch actual := input.(type) {
@@ -120,7 +132,7 @@ func loadColors() {
 	case map[string]interface{}:
 		for k, v := range actual {
 			if txt, converts := v.(string); converts {
-				colors[k] = txt
+				customColors[k] = txt
 			}
 		}
 		return
@@ -131,25 +143,33 @@ func loadColors() {
 	}
 
 	for _, entry := range list {
-		data, err := ioutil.ReadFile(entry)
+		trace("processing color file (%s)", entry)
+		data, err := os.ReadFile(entry)
 		if err == nil {
 			var loaded map[string]string
 			if err := json.Unmarshal(data, &loaded); err == nil {
 				for k, v := range loaded {
-					colors[k] = v
+					customColors[k] = correctColor(v)
 				}
 			} else {
-				warning("error (%v) while loading config file (%v)", err, entry)
+				warning("error (%v) while processing config file (%v)", err, entry)
 			}
+		} else {
+			warning("error (%v) while loading config file (%v)", err, entry)
 		}
 	}
 }
 
 func GetColor(name string) (string, bool) {
-	if len(name) == 0 || len(colors) == 0 {
+	if len(name) == 0 || len(customColors) == 0 {
 		return "", false
 	}
-	result, found := colors[name]
+	result, found := customColors[name]
+
+	if found {
+		trace("found custom color for (%s): %s", name, result)
+	}
+
 	return result, found
 }
 
@@ -158,4 +178,72 @@ func homeDir(name string) string {
 		return path.Join(current.HomeDir, name)
 	}
 	return name
+}
+
+func loadProps() map[string]map[string]string {
+
+	result := map[string]map[string]string{}
+	input := settings.PropsData
+	if input == nil {
+		return result
+	}
+	trace("loading custom props")
+
+	var list []string
+	switch actual := input.(type) {
+	case string:
+		// a single external config
+		list = append(list, actual)
+
+	case []interface{}:
+		// multiple external configs
+		for _, entry := range actual {
+			if txt, converts := entry.(string); converts {
+				list = append(list, txt)
+			}
+		}
+	case map[string]interface{}:
+		// inline definition
+		for k, v := range actual {
+			if len(result[k]) == 0 {
+				result[k] = make(map[string]string)
+			}
+			if values, converts := v.(map[string]interface{}); converts {
+				for key, value := range values {
+					if txt, converts := value.(string); converts {
+						result[k][key] = correctColor(txt)
+					}
+				}
+			}
+		}
+		return result
+
+	default:
+		warning("unrecognized format of props section of the config file (%v)", actual)
+		return result
+	}
+
+	for _, entry := range list {
+		trace("processing props file (%s)", entry)
+		data, err := os.ReadFile(entry)
+		if err == nil {
+			var loaded map[string]map[string]string
+			if err := json.Unmarshal(data, &loaded); err == nil {
+
+				for k, values := range loaded {
+					if len(result[k]) == 0 {
+						result[k] = make(map[string]string)
+					}
+					for key, value := range values {
+						result[k][key] = correctColor(value)
+					}
+				}
+			} else {
+				warning("error (%v) while processing config file (%v)", err, entry)
+			}
+		} else {
+			warning("error (%v) while loading config file (%v)", err, entry)
+		}
+	}
+	return result
 }

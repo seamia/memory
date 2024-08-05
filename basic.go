@@ -14,11 +14,11 @@ func (m *mapper) mapPtrIface(iVal reflect.Value, parentID nodeID, inlineable boo
 	pointee := iVal.Elem()
 
 	if pointee.IsValid() && !pointee.IsZero() {
-		return m.mapValue(pointee, parentID, inlineable) // $$$$$$$$$$$$$$$$$$$$$$$$ recursion
+		return m.mapValue(pointee, parentID, inlineable) // todo: recursion?
 		/*
 			typ := pointee.Type().Kind()
 			if typ == reflect.Ptr || typ == reflect.Interface {
-				// return m.mapPtrIface(pointee, inlineable, isPointer) // $$$$$$$$$$$$$$$$$$$$$$$$ recursion
+				// return m.mapPtrIface(pointee, inlineable, isPointer) // todo: recursion?
 			}
 		*/
 	}
@@ -62,7 +62,7 @@ func (m *mapper) mapString(stringVal reflect.Value, inlineable bool) (nodeID, st
 	quoted = strconv.Quote(quoted)
 	/*
 
-		$$$$$$$$$$$$$$$$$$$$$$$ revisit this commente out block
+		todo: revisit this commented out block
 
 		quoted = strconv.Quote(quoted)
 		quoted = strconv.Quote(quoted)
