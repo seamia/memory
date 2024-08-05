@@ -56,13 +56,13 @@ func isEmptyGuarged(what reflect.Value, guard int) bool {
 		trace("non-zero %s\n", t.Kind().String())
 		switch t.Kind() {
 		case reflect.Pointer, reflect.Interface:
-			// $$$$$$$$$$$$$$$ remember this element to avoid endless recursion
+			// todo: remember this element to avoid endless recursion
 			return isEmptyGuarged(what.Elem(), guard+1)
 		case reflect.Struct:
 
 			for index := 0; index < t.NumField(); index++ {
 				fld := what.Field(index)
-				// $$$$$$ recursion ???
+				// todo: recursion ?
 				if !isEmptyGuarged(fld, guard+1) {
 					return false
 				}
@@ -94,7 +94,7 @@ func isEmptyGuarged(what reflect.Value, guard int) bool {
 		if t.Kind() == reflect.Struct {
 			for index := 0; index < t.NumField(); index++ {
 				fld := what.Field(index)
-				// $$$$$$ recursion ???
+				// todo: recursion ?
 				if !isEmptyGuarged(fld, guard+1) {
 					return false
 				}
@@ -144,6 +144,21 @@ func describe(text string, iVal reflect.Value) {
 
 	key := getNodeKey(iVal)
 	report("\t%s: ========= [%s] [%v] [%v] [key: %v]\n", text, iVal.Type().Kind().String(), iVal, iVal.String(), key)
+}
+
+func copyMap(sourceMap m2s) m2s {
+	if sourceMap == nil {
+		return nil
+	}
+
+	// Create the target map
+	targetMap := make(m2s, len(sourceMap))
+
+	// Copy from the original map to the target map
+	for key, value := range sourceMap {
+		targetMap[key] = value
+	}
+	return targetMap
 }
 
 func debug() {
